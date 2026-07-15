@@ -1,5 +1,9 @@
 # IP Geolocation Extension for Chrome
 
+<p align="center">
+  <strong>简体中文</strong> · <a href="README_EN.md">English</a>
+</p>
+
 [![CI](https://github.com/decli/IP_Geolocation_Extension_Chrome/actions/workflows/ci.yml/badge.svg)](https://github.com/decli/IP_Geolocation_Extension_Chrome/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/decli/IP_Geolocation_Extension_Chrome/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/decli/IP_Geolocation_Extension_Chrome/actions/workflows/codeql-analysis.yml)
 [![Release](https://img.shields.io/github/v/release/decli/IP_Geolocation_Extension_Chrome)](https://github.com/decli/IP_Geolocation_Extension_Chrome/releases)
