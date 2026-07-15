@@ -11,6 +11,12 @@
 
 一个用于 Chrome/Chromium 的公网 IPv4、IPv6 与 IP 地理位置监控扩展。工具栏图标会显示当前出口国家代码；代理、VPN 或公网 IP 发生变化时，可立即看到状态变化并收到通知。
 
+## 产品截图
+
+![IP Address & Geolocation 插件弹窗，展示公网 IP、城市、国家、时区和地址族信息](docs/images/extension-popup.jpg)
+
+扩展弹窗集中展示当前 IPv4、IPv6 及其地理位置信息，工具栏徽标同时显示出口国家代码。
+
 ## 功能
 
 - 工具栏直接显示出口国家代码和国旗。

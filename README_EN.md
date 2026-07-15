@@ -11,6 +11,12 @@
 
 A Chrome/Chromium extension that monitors your public IPv4, IPv6, and IP geolocation. The toolbar icon displays the country code of the current outbound connection, making proxy, VPN, and public IP changes immediately visible.
 
+## Product screenshot
+
+![IP Address & Geolocation popup showing the public IP, city, country, timezone, and address-family details](docs/images/extension-popup.jpg)
+
+The popup presents the current IPv4, IPv6, and geolocation details in one place, while the toolbar badge displays the outbound country code.
+
 ## Features
 
 - Displays the outbound country code and flag directly in the toolbar.
