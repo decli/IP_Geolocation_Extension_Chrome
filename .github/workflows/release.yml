@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test
+        run: npm test
+
+      - name: Check JavaScript syntax
+        run: npm run check
+
+      - name: Build ZIP
+        run: |
+          npm run build
+          mkdir -p dist
+          cp build/chrome.zip "dist/IP-Geolocation-Extension-Chrome-${GITHUB_REF_NAME}.zip"
+
+      - name: Check for CRX signing key
+        id: crx-signing
+        env:
+          CRX_PRIVATE_KEY_BASE64: ${{ secrets.CRX_PRIVATE_KEY_BASE64 }}
+        run: |
+          if [ -n "$CRX_PRIVATE_KEY_BASE64" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build signed CRX
+        if: steps.crx-signing.outputs.available == 'true'
+        env:
+          CRX_PRIVATE_KEY_BASE64: ${{ secrets.CRX_PRIVATE_KEY_BASE64 }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/extension.pem"
+          trap 'rm -f "$KEY_PATH"' EXIT
+          printf '%s' "$CRX_PRIVATE_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable)"
+          xvfb-run --auto-servernum "$CHROME_BIN" \
+            --no-sandbox \
+            --disable-gpu \
+            --pack-extension="$GITHUB_WORKSPACE/dev" \
+            --pack-extension-key="$KEY_PATH"
+          mv dev.crx "dist/IP-Geolocation-Extension-Chrome-${GITHUB_REF_NAME}.crx"
+          test -s "dist/IP-Geolocation-Extension-Chrome-${GITHUB_REF_NAME}.crx"
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi

@@ -2,3 +2,7 @@
 /build/*
 /dev/*
 .vscode/
+/output/
+*.crx
+*.pem
+*.key
