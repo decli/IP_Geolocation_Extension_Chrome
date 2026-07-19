@@ -42,12 +42,14 @@ Each Release also includes a signed CRX. Some stable Chrome builds restrict dire
 ### Install from source
 
 ```bash
-bash build.sh dev chrome
+bash build.sh install chrome
 ```
 
-Then load the project's `dev/` directory from `chrome://extensions`.
+Then load the project's `local-extension/` directory from `chrome://extensions`. Chrome should keep using this stable directory; `dev/` is disposable build output and should no longer be loaded into Chrome.
 
-The local unpacked build does not set a fixed extension ID. Chrome derives its ID from the absolute path of `dev/`. Keep that path unchanged, and remove any stale fixed-ID installation from Chrome before switching to this build.
+The local unpacked build does not set a fixed extension ID. Chrome derives its ID from the absolute path of the loaded directory, so keep `local-extension/` in place. After updating the source, run the same command again and click **Reload** on the extension card. The sync does not empty Chrome's live extension directory first.
+
+If both keyed and keyless builds were previously loaded from the same `dev/` path, Chrome may retain two extension IDs and invalidate that entire path during startup. Do not edit Chrome's protected `Secure Preferences`; load the new `local-extension/` path instead so the stale path records cannot affect it.
 
 ## Status semantics
 
@@ -78,6 +80,7 @@ These services can see the public IP associated with each request. The extension
 ```bash
 npm test
 npm run check
+bash build.sh install chrome
 bash build.sh package chrome
 ```
 

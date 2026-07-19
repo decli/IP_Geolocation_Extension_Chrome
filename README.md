@@ -42,12 +42,14 @@ Release 同时提供签名的 CRX。部分 Chrome 正式版会限制从 Chrome W
 ### 从源码安装
 
 ```bash
-bash build.sh dev chrome
+bash build.sh install chrome
 ```
 
-然后在 `chrome://extensions` 中加载项目里的 `dev/` 目录。
+然后在 `chrome://extensions` 中加载项目里的 `local-extension/` 目录。Chrome 长期使用这个稳定目录；`dev/` 只作为可随时重建的临时开发产物，不要再把它加载到 Chrome。
 
-本地解压版不设置固定扩展 ID；Chrome 会根据 `dev/` 的绝对路径生成 ID。请保持加载目录不变，并在切换到本版本前删除浏览器里残留的旧固定 ID 插件记录。
+本地解压版不设置固定扩展 ID；Chrome 会根据加载目录的绝对路径生成 ID。请保持 `local-extension/` 路径不变。更新源码后再次运行上述命令，再到扩展管理页点击“重新加载”即可；同步过程中不会先清空 Chrome 正在使用的目录。
+
+如果曾经从同一个 `dev/` 路径加载过带 `key` 和不带 `key` 的版本，Chrome 可能保留两个扩展 ID，并在启动时把整个路径判为无效。此时不要编辑 Chrome 的 `Secure Preferences`；改为只加载全新的 `local-extension/` 路径，即可避开旧路径记录。
 
 ## 状态语义
 
@@ -78,6 +80,7 @@ bash build.sh dev chrome
 ```bash
 npm test
 npm run check
+bash build.sh install chrome
 bash build.sh package chrome
 ```
 
