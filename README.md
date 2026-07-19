@@ -47,6 +47,8 @@ bash build.sh dev chrome
 
 然后在 `chrome://extensions` 中加载项目里的 `dev/` 目录。
 
+本地解压版不设置固定扩展 ID；Chrome 会根据 `dev/` 的绝对路径生成 ID。请保持加载目录不变，并在切换到本版本前删除浏览器里残留的旧固定 ID 插件记录。
+
 ## 状态语义
 
 | 模式 | IPv4 | IPv6 | 工具栏状态 |

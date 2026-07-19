@@ -47,6 +47,8 @@ bash build.sh dev chrome
 
 Then load the project's `dev/` directory from `chrome://extensions`.
 
+The local unpacked build does not set a fixed extension ID. Chrome derives its ID from the absolute path of `dev/`. Keep that path unchanged, and remove any stale fixed-ID installation from Chrome before switching to this build.
+
 ## Status semantics
 
 | Mode | IPv4 | IPv6 | Toolbar status |

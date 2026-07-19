@@ -2,7 +2,6 @@
   "name": "IP Address & Geolocation (Reliable)",
   "version": "3.1.1",
   "manifest_version": 3,
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqCawDURb2Q4ShmAAHd/NImNi6QL/BOiEZKt9l+DmyScmTUI1CubSdIZfKfAtzAnoocewWo4Ggm1FxPhX5Ja1swUuUXLk1MOdoUE4khGNUdImV5AFtmAXfL2brDsPs5dWqT/cagDzEEE3HZUHG+fqYpYiryky3vm73ejGtANzgHsWOgBwE3jBK5kYt8mzdgF1Ij0O9JlUYYvSeJI2W/+zq5SvMhNsrrMw2usjAtCG7XBjwcXXNOGbQM4hJKVf/Uyr+fGoOOPGbrzD7B8MpaxSsHyvq/6c63aXA3TmAQjXfl+2fXtD+lcXIipvwVyl6b72lpb3g0QC7Fkk03qVZKBpGwIDAQAB",
   "icons": {
     "16": "img/icon16.png",
     "48": "img/icon48.png",

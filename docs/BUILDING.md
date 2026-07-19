@@ -26,12 +26,13 @@ unzip -t build/chrome.zip
 
 - Load `dev/` from `chrome://extensions` for development.
 - Distribute `build/chrome.zip` for manual unpacked installation.
+- The source and generated manifests intentionally contain no fixed `key`. Chrome derives the unpacked extension ID from the local directory path.
 
-## Build a signed CRX locally
+## Build an optional signed CRX locally
 
-The manifest pins the signing public key, so unpacked builds and Release CRX files use the same extension ID: `klcnhnfofdgppmjgjpghcpkbjbdacjmk`.
+The unpacked development build never uses a manifest `key`. A CRX gets its identity only from the private key used by Chrome when packaging it, and that identity is separate from the directory-derived development ID.
 
-Release maintainers must use the private key corresponding to the public `key` in `manifest.json`. Keep that private key outside the repository. The following command is only for starting a new fork with a new identity; after generating it, update the manifest public key and documented extension ID as well:
+Generate a signing key and keep it outside the repository:
 
 ```bash
 openssl genrsa -out extension.pem 2048
@@ -52,7 +53,7 @@ On macOS, the Chrome executable is normally:
 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 ```
 
-Never commit `extension.pem`. A CRX signed with an unrelated key does not retain this project's extension ID, and losing the release key prevents future CRX releases from retaining it.
+Never commit `extension.pem`. Reusing the same private key preserves the identity of future CRX packages, but it does not affect local unpacked builds.
 
 ## GitHub Release workflow
 
