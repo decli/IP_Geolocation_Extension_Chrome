@@ -4,6 +4,15 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing v* tag to rebuild and publish
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 permissions:
   contents: write
@@ -15,6 +24,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -31,7 +42,12 @@ jobs:
         run: |
           npm run build
           mkdir -p dist
-          cp build/chrome.zip "dist/IP-Geolocation-Extension-Chrome-${GITHUB_REF_NAME}.zip"
+          cp build/chrome.zip "dist/IP-Geolocation-Extension-Chrome-${RELEASE_TAG}.zip"
+
+      - name: Prepare clean CRX source
+        run: |
+          bash build.sh dev chrome
+          test ! -e dev/chrome.zip
 
       - name: Check for CRX signing key
         id: crx-signing
@@ -58,8 +74,8 @@ jobs:
             --disable-gpu \
             --pack-extension="$GITHUB_WORKSPACE/dev" \
             --pack-extension-key="$KEY_PATH"
-          mv dev.crx "dist/IP-Geolocation-Extension-Chrome-${GITHUB_REF_NAME}.crx"
-          test -s "dist/IP-Geolocation-Extension-Chrome-${GITHUB_REF_NAME}.crx"
+          mv dev.crx "dist/IP-Geolocation-Extension-Chrome-${RELEASE_TAG}.crx"
+          test -s "dist/IP-Geolocation-Extension-Chrome-${RELEASE_TAG}.crx"
 
       - name: Generate checksums
         run: |
@@ -70,10 +86,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/* \
-              --title "$GITHUB_REF_NAME" \
+            gh release create "$RELEASE_TAG" dist/* \
+              --title "$RELEASE_TAG" \
               --generate-notes
           fi
