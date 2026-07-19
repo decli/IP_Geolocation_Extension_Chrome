@@ -1,6 +1,7 @@
 /.idea/
 /build/*
 /dev/*
+/local-extension/*
 .vscode/
 /output/
 *.crx

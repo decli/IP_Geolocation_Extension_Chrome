@@ -4,7 +4,7 @@
 
 - Node.js 20 or newer
 - Bash
-- `zip` and `unzip`
+- `rsync`, `zip`, and `unzip`
 - Google Chrome/Chromium and OpenSSL for CRX packaging
 
 No npm dependencies are required.
@@ -16,17 +16,27 @@ npm test
 npm run check
 ```
 
-## Build an unpacked extension and ZIP
+## Build a stable local extension, disposable development output, and ZIP
 
 ```bash
+bash build.sh install chrome
 bash build.sh dev chrome
 bash build.sh package chrome
 unzip -t build/chrome.zip
 ```
 
-- Load `dev/` from `chrome://extensions` for development.
+- Load `local-extension/` from `chrome://extensions` for a persistent local installation.
+- Treat `dev/` as disposable build output; do not use it as Chrome's long-lived loaded path.
 - Distribute `build/chrome.zip` for manual unpacked installation.
 - The source and generated manifests intentionally contain no fixed `key`. Chrome derives the unpacked extension ID from the local directory path.
+
+The `install` command stages a complete build and then synchronizes it into the stable directory without deleting that directory first. This keeps `manifest.json` present while Chrome is running. To use another permanent path, pass it as the third argument:
+
+```bash
+bash build.sh install chrome /absolute/permanent/path
+```
+
+Keep the chosen path unchanged. If a previous keyed and keyless build shared another path, do not reuse that contaminated path and do not edit Chrome's protected preference files manually.
 
 ## Build an optional signed CRX locally
 
