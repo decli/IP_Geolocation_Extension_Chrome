@@ -17,6 +17,10 @@ A Chrome/Chromium extension that monitors your public IPv4, IPv6, and IP geoloca
 
 The popup presents the current IPv4, IPv6, and geolocation details in one place, while the toolbar badge displays the outbound country code.
 
+![IP Address & Geolocation settings page: toggles for IPv4 and IPv6 change notifications, an Auto / IPv4 / IPv6 choice for which address family drives the country indicator, and toggles for showing the country flag and the country-code badge](docs/images/extension-options.jpg)
+
+The settings page holds five things and nothing else: the two change notifications, which address family drives the country indicator, and whether the toolbar shows a flag or a country-code badge.
+
 ## Features
 
 - Displays the outbound country code and flag directly in the toolbar.
