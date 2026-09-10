@@ -2,11 +2,26 @@ const IP_ADDRESS_ENDPOINTS = {
     4: 'https://api.ipify.org?format=json',
     6: 'https://api6.ipify.org?format=json'
 };
+const IP_ADDRESS_TEXT_ENDPOINTS = {
+    4: 'https://ipv4.icanhazip.com/',
+    6: 'https://ipv6.icanhazip.com/'
+};
 const COUNTRY_API_URL = 'https://api.country.is';
 const CHINA_IPV4_API_URL = 'https://myip.ipip.net/json';
 const CHINA_GEO_API_URL = 'https://ip.taobao.com/outGetIpInfo';
-const DEFAULT_GEOLOCATION_TIMEOUT = 7000;
-const PROVIDER_ATTEMPT_TIMEOUT = 1500;
+
+// Budget for one complete lookup: public address plus geolocation.
+const DEFAULT_GEOLOCATION_TIMEOUT = 12000;
+
+// A request that leaves the machine through a proxy regularly needs more than a
+// second, and it needs a lot more right after the proxy was switched on, while
+// the tunnel is still cold. The previous 1500 ms budget for every attempt gave
+// up on the proxied provider so eagerly that the mainland fallback - which
+// measures the direct route instead - became the routine source of the badge,
+// which is why a fresh proxy exit address showed up minutes late or not at all.
+const PRIMARY_ATTEMPT_TIMEOUT = 4000;
+const SECONDARY_ATTEMPT_TIMEOUT = 2500;
+
 const CONTINENT_NAMES = {
     AF: 'Africa',
     AN: 'Antarctica',
@@ -24,6 +39,7 @@ function emptyGeoLocationData() {
         },
         geoLocation: {
             ipAddress: '',
+            source: '',
             countryCode: '',
             countryName: '',
             city: '',
@@ -61,10 +77,10 @@ function countryName(countryCode) {
     }
 }
 
-async function fetchJson(url, signal) {
+async function fetchResponse(url, signal, accept) {
     const response = await fetch(url, {
         cache: 'no-store',
-        headers: { Accept: 'application/json' },
+        headers: { Accept: accept },
         signal: signal
     });
 
@@ -72,7 +88,15 @@ async function fetchJson(url, signal) {
         throw new Error(`Request failed with HTTP ${response.status}`);
     }
 
-    return response.json();
+    return response;
+}
+
+async function fetchJson(url, signal) {
+    return (await fetchResponse(url, signal, 'application/json')).json();
+}
+
+async function fetchText(url, signal) {
+    return (await fetchResponse(url, signal, 'text/plain')).text();
 }
 
 async function runWithTimeout(operation, parentSignal, timeout) {
@@ -94,7 +118,10 @@ async function runWithTimeout(operation, parentSignal, timeout) {
     }
 }
 
-async function firstSuccessful(providers, parentSignal, label, timeout) {
+// Tries the providers in order and reports which one answered. Every attempt is
+// bounded by its own budget and by the deadline of the whole lookup, so a chain
+// of slow providers can never outlive the refresh that started it.
+async function firstSuccessful(providers, parentSignal, label, deadline) {
     let lastError = null;
 
     for (const provider of providers) {
@@ -104,8 +131,14 @@ async function firstSuccessful(providers, parentSignal, label, timeout) {
             throw error;
         }
 
+        const budget = Math.min(provider.timeout, deadline - Date.now());
+        if (budget <= 0) {
+            lastError = lastError || new Error(`${label} ran out of time`);
+            break;
+        }
+
         try {
-            return await runWithTimeout(provider, parentSignal, Math.min(PROVIDER_ATTEMPT_TIMEOUT, timeout));
+            return { value: await runWithTimeout(provider.run, parentSignal, budget), source: provider.source };
         } catch (error) {
             if (parentSignal.aborted) {
                 throw error;
@@ -117,32 +150,60 @@ async function firstSuccessful(providers, parentSignal, label, timeout) {
     throw new Error(`${label} failed: ${lastError ? String(lastError) : 'no provider available'}`);
 }
 
-async function fetchPublicIp(family, signal, timeout) {
+function publicIpProviders(family) {
+    // Both primary providers sit on domains that a proxy rule set treats as
+    // foreign, so they report the proxied exit address. Having two of them means
+    // a single overloaded or rate-limited service no longer hands the badge over
+    // to the direct-route fallback.
     const providers = [
-        async (providerSignal) => {
-            const response = await fetchJson(IP_ADDRESS_ENDPOINTS[family], providerSignal);
-            const ipAddress = response && response.ip;
-            if (!isAddressFamily(ipAddress, family)) {
-                throw new Error(`The IPv${family} service returned an invalid address`);
+        {
+            source: ADDRESS_SOURCE_PRIMARY,
+            timeout: PRIMARY_ATTEMPT_TIMEOUT,
+            run: async (providerSignal) => {
+                const response = await fetchJson(IP_ADDRESS_ENDPOINTS[family], providerSignal);
+                const ipAddress = response && response.ip;
+                if (!isAddressFamily(ipAddress, family)) {
+                    throw new Error(`The IPv${family} service returned an invalid address`);
+                }
+                return ipAddress;
             }
-            return ipAddress;
+        },
+        {
+            source: ADDRESS_SOURCE_PRIMARY,
+            timeout: SECONDARY_ATTEMPT_TIMEOUT,
+            run: async (providerSignal) => {
+                const body = await fetchText(IP_ADDRESS_TEXT_ENDPOINTS[family], providerSignal);
+                const ipAddress = typeof body === 'string' ? body.trim() : '';
+                if (!isAddressFamily(ipAddress, family)) {
+                    throw new Error(`The secondary IPv${family} service returned an invalid address`);
+                }
+                return ipAddress;
+            }
         }
     ];
 
     if (family === 4) {
-        providers.push(async (providerSignal) => {
-            const response = await fetchJson(CHINA_IPV4_API_URL, providerSignal);
-            const ipAddress = response && response.ret === 'ok' && response.data
-                ? response.data.ip
-                : '';
-            if (!isAddressFamily(ipAddress, 4)) {
-                throw new Error('The mainland IPv4 service returned an invalid address');
+        providers.push({
+            source: ADDRESS_SOURCE_FALLBACK,
+            timeout: SECONDARY_ATTEMPT_TIMEOUT,
+            run: async (providerSignal) => {
+                const response = await fetchJson(CHINA_IPV4_API_URL, providerSignal);
+                const ipAddress = response && response.ret === 'ok' && response.data
+                    ? response.data.ip
+                    : '';
+                if (!isAddressFamily(ipAddress, 4)) {
+                    throw new Error('The mainland IPv4 service returned an invalid address');
+                }
+                return ipAddress;
             }
-            return ipAddress;
         });
     }
 
-    return firstSuccessful(providers, signal, `IPv${family} address lookup`, timeout);
+    return providers;
+}
+
+async function fetchPublicIp(family, signal, deadline) {
+    return firstSuccessful(publicIpProviders(family), signal, `IPv${family} address lookup`, deadline);
 }
 
 function normalizeCountryResponse(response) {
@@ -197,29 +258,43 @@ function normalizeTaobaoResponse(response) {
     };
 }
 
-async function fetchGeoData(ipAddress, signal, timeout) {
+// Both geolocation providers answer the same question about the same address,
+// so either of them may resolve a lookup without changing what the badge means.
+async function fetchGeoData(ipAddress, signal, deadline) {
     const fields = 'city,continent,subdivision,location';
     return firstSuccessful([
-        async (providerSignal) => normalizeCountryResponse(await fetchJson(
-            `${COUNTRY_API_URL}/${encodeURIComponent(ipAddress)}?fields=${fields}`,
-            providerSignal
-        )),
-        async (providerSignal) => normalizeTaobaoResponse(await fetchJson(
-            `${CHINA_GEO_API_URL}?ip=${encodeURIComponent(ipAddress)}&accessKey=alibaba-inc`,
-            providerSignal
-        ))
-    ], signal, 'Geolocation lookup', timeout);
+        {
+            source: ADDRESS_SOURCE_PRIMARY,
+            timeout: SECONDARY_ATTEMPT_TIMEOUT,
+            run: async (providerSignal) => normalizeCountryResponse(await fetchJson(
+                `${COUNTRY_API_URL}/${encodeURIComponent(ipAddress)}?fields=${fields}`,
+                providerSignal
+            ))
+        },
+        {
+            source: ADDRESS_SOURCE_FALLBACK,
+            timeout: SECONDARY_ATTEMPT_TIMEOUT,
+            run: async (providerSignal) => normalizeTaobaoResponse(await fetchJson(
+                `${CHINA_GEO_API_URL}?ip=${encodeURIComponent(ipAddress)}&accessKey=alibaba-inc`,
+                providerSignal
+            ))
+        }
+    ], signal, 'Geolocation lookup', deadline);
 }
 
 async function lookupGeoLocation(family, timeout) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
+    const deadline = Date.now() + timeout;
 
     try {
-        const ipAddress = await fetchPublicIp(family, controller.signal, timeout);
-        const geoLocation = await fetchGeoData(ipAddress, controller.signal, timeout);
+        const address = await fetchPublicIp(family, controller.signal, deadline);
+        const geoLocation = await fetchGeoData(address.value, controller.signal, deadline);
         const result = emptyGeoLocationData();
-        result.geoLocation = Object.assign({ ipAddress: ipAddress }, geoLocation);
+        result.geoLocation = Object.assign(
+            { ipAddress: address.value, source: address.source },
+            geoLocation.value
+        );
 
         return result;
     } catch (error) {

@@ -23,13 +23,14 @@ The settings page holds five things and nothing else: the two change notificatio
 
 ## Features
 
-- Displays the outbound country code and flag directly in the toolbar.
+- Displays the outbound country code and flag directly in the toolbar, with the current address, its location and its source in the tooltip.
 - Detects both IPv4 and IPv6. Auto mode prefers IPv4 and falls back to IPv6.
-- Preserves the original approximately 3.55-second detection interval and IP-change notifications.
+- Keeps the approximately 3.55-second detection interval and additionally wakes the stopped service worker on tab switches, page loads, window focus, network recovery and popup openings, so a proxy switch does not have to wait for the next alarm.
+- Commits an overseas reading as soon as it arrives; a country change reported only by the mainland direct-route service has to repeat once, so an unstable overseas endpoint cannot make the badge bounce between the proxied and the direct exit.
 - Displays `ERR` immediately when a lookup genuinely fails instead of hiding an outage behind stale cached data.
 - Prevents overlapping requests and asynchronous races, so an older request cannot overwrite a newer result.
 - Uses mainland-accessible fallback services when overseas endpoints are unavailable, including Clash DIRECT scenarios.
-- Uses Manifest V3 and requests only notifications, storage, alarms, and access to the required API hosts.
+- Uses Manifest V3 and requests only notifications, storage, alarms, and access to the required API hosts. It requests no tab permissions; browsing events are used only as wake-up signals.
 
 ## Installation
 
@@ -71,13 +72,15 @@ The extension never substitutes the “last successful country” for a failed l
 
 The extension must contact external services to observe the public outbound IP. It uses the following lookup chain:
 
-| Purpose | Primary service | Mainland fallback |
-|---|---|---|
-| Public IPv4 address | [ipify](https://www.ipify.org/) | [IPIP](https://www.ipip.net/) |
-| Public IPv6 address | [ipify IPv6](https://www.ipify.org/) | — |
-| IP geolocation | [Country.is](https://country.is/) | Taobao IP database |
+| Purpose | Primary service | Secondary service | Mainland fallback |
+|---|---|---|---|
+| Public IPv4 address | [ipify](https://www.ipify.org/) | [icanhazip](https://icanhazip.com/) | [IPIP](https://www.ipip.net/) |
+| Public IPv6 address | [ipify IPv6](https://www.ipify.org/) | [icanhazip IPv6](https://icanhazip.com/) | — |
+| IP geolocation | [Country.is](https://country.is/) | — | Taobao IP database |
 
-These services can see the public IP associated with each request. The extension itself does not create user accounts, upload browsing history, or operate a remote server. In Clash Rule mode, different hostnames may follow different routing rules; the fallback chain prevents a DIRECT connection from being mistaken for an outage merely because an overseas API is unavailable.
+These services can see the public IP associated with each request. The extension itself does not create user accounts, upload browsing history, or operate a remote server.
+
+The overseas and mainland services do not measure the same route: in Clash Rule mode the former are proxied and report the proxied exit address, while the latter is reachable directly and reports the local exit address. The overseas chain therefore has two services, and the mainland fallback is only consulted once both are unavailable; when that happens, the toolbar tooltip says that the reading came from the direct connection.
 
 ## Development and builds
 
@@ -96,7 +99,8 @@ The ZIP is generated at `build/chrome.zip`. See [docs/BUILDING.md](docs/BUILDING
 background.js                 Service worker entry point
 js/main.js                    Scheduling, status commits, notifications
 js/models/GeoLocation.js      IP/Geo providers and fallback chain
-js/utils/RefreshPolicy.js     IPv4/IPv6 selection policy
+js/utils/RefreshPolicy.js     IPv4/IPv6 selection, throttling and commit policy
+js/utils/RuntimeState.js      State that survives a service-worker restart
 tests/                        Node.js automated tests
 .github/workflows/            CI, CodeQL, and Release builds
 ```

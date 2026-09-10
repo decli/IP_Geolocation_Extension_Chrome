@@ -1,6 +1,7 @@
 importScripts("js/constants.js");
 importScripts("js/utils/LocalStorageProvider.js");
 importScripts("js/utils/RefreshPolicy.js");
+importScripts("js/utils/RuntimeState.js");
 importScripts("js/models/GeoLocation.js");
 importScripts("js/main.js");
 

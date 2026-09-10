@@ -23,13 +23,14 @@
 
 ## 功能
 
-- 工具栏直接显示出口国家代码和国旗。
+- 工具栏直接显示出口国家代码和国旗，鼠标悬停显示当前 IP、归属地与数据来源。
 - 同时检测 IPv4 与 IPv6，Auto 模式优先显示 IPv4，失败时使用 IPv6。
-- 保留原有约 3.55 秒检测频率与 IP 变化通知。
+- 约 3.55 秒检测频率，并在切换标签页、加载页面、切回浏览器窗口、网络恢复和打开弹窗时立即唤醒 Service Worker 复查，代理切换后无需等待下一次闹钟。
+- 海外线路读数一经取得立即上屏；仅由大陆直连接口给出的国家变化需连续两次确认，避免海外接口抖动时在代理出口与直连出口之间来回跳。
 - 真正查询失败时立即显示 `ERR`，不会用旧缓存掩盖断网或代理故障。
 - 防止请求重叠与异步竞态，旧请求不能覆盖新一轮结果。
 - 海外接口不可达时使用大陆可访问的备用接口，支持 Clash DIRECT 场景。
-- Manifest V3，仅申请通知、存储、定时器和必要 API 域名权限。
+- Manifest V3，仅申请通知、存储、定时器和必要 API 域名权限；不申请标签页权限，浏览事件只用于唤醒。
 
 ## 安装
 
@@ -71,13 +72,15 @@ bash build.sh install chrome
 
 扩展必须通过外部服务观察公网出口 IP。查询链如下：
 
-| 用途 | 首选服务 | 大陆备用服务 |
-|---|---|---|
-| IPv4 出口地址 | [ipify](https://www.ipify.org/) | [IPIP](https://www.ipip.net/) |
-| IPv6 出口地址 | [ipify IPv6](https://www.ipify.org/) | — |
-| IP 地理位置 | [Country.is](https://country.is/) | 淘宝 IP 库 |
+| 用途 | 首选服务 | 次选服务 | 大陆备用服务 |
+|---|---|---|---|
+| IPv4 出口地址 | [ipify](https://www.ipify.org/) | [icanhazip](https://icanhazip.com/) | [IPIP](https://www.ipip.net/) |
+| IPv6 出口地址 | [ipify IPv6](https://www.ipify.org/) | [icanhazip IPv6](https://icanhazip.com/) | — |
+| IP 地理位置 | [Country.is](https://country.is/) | — | 淘宝 IP 库 |
 
-这些服务会看到查询对应的公网 IP；扩展自身不建立账户、不上传浏览历史，也不维护远程服务器。不同域名在 Clash Rule 模式下可能走不同规则，备用链用于避免 DIRECT 状态被海外 API 可用性误判为断网。
+这些服务会看到查询对应的公网 IP；扩展自身不建立账户、不上传浏览历史，也不维护远程服务器。
+
+海外服务与大陆服务测的并不是同一条线路：在 Clash Rule 模式下前者走代理、返回代理出口 IP，后者直连、返回本地出口 IP。因此海外链路配了两个服务，只有它们都不可用时才会落到大陆备用接口；此时徽标提示会注明读数来自直连线路。
 
 ## 开发与构建
 
@@ -96,7 +99,8 @@ ZIP 会生成到 `build/chrome.zip`。详细说明见 [docs/BUILDING.md](docs/BU
 background.js                 Service worker 入口
 js/main.js                    调度、状态提交、通知
 js/models/GeoLocation.js      IP/Geo 服务与回退链
-js/utils/RefreshPolicy.js     IPv4/IPv6 选择策略
+js/utils/RefreshPolicy.js     IPv4/IPv6 选择、节流与提交策略
+js/utils/RuntimeState.js      跨 Service Worker 重启保留的运行状态
 tests/                        Node.js 自动测试
 .github/workflows/            CI、CodeQL 与 Release 构建
 ```

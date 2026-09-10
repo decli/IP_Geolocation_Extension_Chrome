@@ -83,4 +83,18 @@ function triggerView() {
     }
 }
 
-window.addEventListener("load", fetchGeoLocation);
+function requestBackgroundRefresh() {
+    // The toolbar badge is owned by the service worker, which may have been
+    // stopped for a while. Opening the popup is the clearest signal that the
+    // user wants the current state, so the worker is woken up for a refresh
+    // instead of leaving a stale country code next to a fresh popup.
+    if (!chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') return;
+    chrome.runtime.sendMessage({ method: 'refresh' }, function () {
+        void chrome.runtime.lastError;
+    });
+}
+
+window.addEventListener("load", function () {
+    fetchGeoLocation();
+    requestBackgroundRefresh();
+});
