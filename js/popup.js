@@ -53,6 +53,21 @@ function fetchGeoLocation() {
     });
 }
 
+// The two provider chains do not observe the same route: the international
+// services report the address a proxied request leaves from, the mainland
+// service reports the address of the direct connection. A reading is only
+// meaningful together with the chain that produced it.
+const SOURCE_NOTES = {
+    [ADDRESS_SOURCE_PRIMARY]: 'As seen by overseas services',
+    [ADDRESS_SOURCE_FALLBACK]: 'As seen by mainland services (overseas services unavailable)'
+};
+
+function withSourceNote(geoLocation) {
+    return Object.assign({}, geoLocation, {
+        sourceNote: geoLocation.ipAddress ? (SOURCE_NOTES[geoLocation.source] || '') : ''
+    });
+}
+
 function compileHtml(html, obj, clip) {
     for (let prop in obj) {
         html = html.replace(new RegExp(clip + prop + clip, 'g'), obj[prop] ? obj[prop] : '');
@@ -64,9 +79,9 @@ function triggerView() {
     let infosHtml = document.getElementById('ipGeoLocationView').innerHTML;
     let gIPv4 = (geoIpV4 ? geoIpV4.toJSON() : new GeoLocation().toJSON());
     let gIPv6 = (geoIpV6 ? geoIpV6.toJSON() : new GeoLocation6().toJSON());
-    compiledInfosHtml = compileHtml(infosHtml, gIPv4.geoLocation, 'T');
+    compiledInfosHtml = compileHtml(infosHtml, withSourceNote(gIPv4.geoLocation), 'T');
     compiledInfosHtml = compileHtml(compiledInfosHtml, gIPv4.browser, 'T');
-    compiledInfosHtml = compileHtml(compiledInfosHtml, gIPv6.geoLocation, 'T6');
+    compiledInfosHtml = compileHtml(compiledInfosHtml, withSourceNote(gIPv6.geoLocation), 'T6');
     compiledInfosHtml = compileHtml(compiledInfosHtml, gIPv6.browser, 'T6');
     document.getElementById('ipLocationInfo').innerHTML = compiledInfosHtml;
 

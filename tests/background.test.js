@@ -337,7 +337,7 @@ test('a single direct-route answer does not replace the proxied country code', a
 
     await api.fetchGeoLocation();
     assert.equal(chrome.state.badge.text, 'CN');
-    assert.match(chrome.state.badge.title, /direct-connection fallback/);
+    assert.match(chrome.state.badge.title, /as seen by mainland services/);
 
     internationalWorks = true;
     await api.fetchGeoLocation();

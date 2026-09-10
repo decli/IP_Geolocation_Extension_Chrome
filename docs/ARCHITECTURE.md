@@ -27,7 +27,7 @@ Every provider response is checked for HTTP success, address family, and a two-l
 
 ## Address sources
 
-The two address chains do not measure the same route. The international providers sit on domains that a rule-based proxy treats as foreign, so they report the proxied exit address - the address the badge is meant to show. The mainland provider is reachable without a proxy, so it reports the address of the direct connection. Every reading therefore carries the source that produced it (`primary` or `fallback`), and that source is what the badge and notification policies reason about.
+The two address chains do not measure the same route. The international providers sit on domains that a rule-based proxy treats as foreign, so they report the proxied exit address - the address the badge is meant to show. The mainland provider is reachable without a proxy, so it reports the address of the direct connection. Every reading therefore carries the source that produced it (`primary` or `fallback`). That source is what the badge and notification policies reason about, and both the badge tooltip and the popup name it, so a country code is never shown without the route it describes.
 
 The attempt budget for the primary provider is generous on purpose. A request through a proxy regularly needs more than a second, and considerably more while a freshly enabled tunnel is still cold. A short budget makes the direct-route fallback answer instead, which is how a proxied exit address ends up not being displayed at all.
 

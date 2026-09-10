@@ -23,7 +23,7 @@ The settings page holds five things and nothing else: the two change notificatio
 
 ## Features
 
-- Displays the outbound country code and flag directly in the toolbar, with the current address, its location and its source in the tooltip.
+- Displays the outbound country code and flag directly in the toolbar, with the current address, its location and its source in the tooltip. The popup names that source as well, so a reading is never presented without the route it describes.
 - Detects both IPv4 and IPv6. Auto mode prefers IPv4 and falls back to IPv6.
 - Keeps the approximately 3.55-second detection interval and additionally wakes the stopped service worker on tab switches, page loads, window focus, network recovery and popup openings, so a proxy switch does not have to wait for the next alarm.
 - Commits an overseas reading as soon as it arrives; a country change reported only by the mainland direct-route service has to repeat once, so an unstable overseas endpoint cannot make the badge bounce between the proxied and the direct exit.

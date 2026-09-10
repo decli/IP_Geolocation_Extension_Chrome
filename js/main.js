@@ -46,10 +46,10 @@ function describeReading(reading) {
     const location = [reading.countryName, reading.countryCode].filter(Boolean).join(' ');
     const parts = [`IPv${reading.family} ${reading.ipAddress}`.trim(), location].filter(Boolean);
     if (reading.source === ADDRESS_SOURCE_FALLBACK) {
-        // The direct-route provider answered, so the user is looking at the
-        // address of the unproxied connection. Saying so beats silently
-        // presenting it as the proxied exit address.
-        parts.push('via direct-connection fallback');
+        // The mainland service answered, so this is the address of the direct
+        // connection. Saying so beats presenting it as the proxied exit
+        // address that the badge normally shows.
+        parts.push('as seen by mainland services');
     }
     return parts.join(' · ');
 }
