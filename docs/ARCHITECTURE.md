@@ -44,9 +44,13 @@ A reading from the primary chain is committed immediately, so a proxy switch rea
 
 There is no last-known-good display cache. A failed refresh therefore remains observable and cannot be hidden by a previous country code.
 
+Toolbar writes settle together before a render failure is reported. The selected country is committed to runtime state only after the action APIs succeed. A rendering exception clears that committed country, attempts an `ERR` indicator with a toolbar-specific tooltip, and is returned to the popup. Even if painting `ERR` also fails, the error is logged and later refresh attempts remain enabled. Display preferences apply to error badges as well.
+
 ## Change notifications
 
 A notification is sent when the address of one family changes between two readings that came from the same provider chain. A difference across a chain switch describes two different routes rather than a moved public IP, so it is recorded without notifying.
+
+The toolbar is painted before notifications are sent. Notification API failures are logged as warnings and do not reject the refresh or prevent state persistence.
 
 ## Scheduling and concurrency
 
@@ -60,6 +64,12 @@ A Manifest V3 service worker is stopped whenever it goes idle, so an in-worker i
 `refreshInFlight` coalesces overlapping triggers so a slow lookup never starts a second competing refresh, and event-driven triggers additionally pass a throttle so that browsing cannot produce more requests than the interval already does.
 
 This removes the original race in which independent IPv4 and IPv6 callbacks shared `ipv4Error` and could write `US`, then overwrite it with a late `ERR` from another request generation.
+
+The interval is established before initialization paints a placeholder or checks the alarm. Failures in either initialization step are logged without preventing the first lookup or subsequent retries.
+
+## Popup feedback
+
+The table performs its own lookup and separately asks the service worker to refresh the toolbar. It checks message transport errors, background exceptions, and selected-family lookup failures. Two native status messages keep table failures separate from toolbar failures, with Retry and Open settings controls. A successful toolbar refresh also reports its display switches so the popup can explain why a valid country is intentionally hidden. The feedback uses native DOM elements and does not depend on Material Design Lite JavaScript.
 
 ## Storage and permissions
 

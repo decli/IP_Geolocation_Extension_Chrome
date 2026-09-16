@@ -1,6 +1,6 @@
 {
   "name": "ip-geolocation-extension-chrome",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "private": true,
   "description": "Reliable IPv4, IPv6 and geolocation monitor for Chrome",
   "license": "GPL-3.0-only",

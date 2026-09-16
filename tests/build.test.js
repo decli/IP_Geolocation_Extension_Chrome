@@ -29,6 +29,14 @@ test("stable local install produces a clean keyless Chrome extension", () => {
         assert.equal(fs.existsSync(path.join(installDirectory, "background.js")), true);
         assert.equal(fs.existsSync(path.join(installDirectory, "img", "icon_full.png")), false);
         assert.equal(fs.existsSync(path.join(installDirectory, "obsolete-file.txt")), false);
+        // Exercise the distributed asset paths, not just a mocked setIcon call.
+        const source = fs.readFileSync(path.join(installDirectory, "js", "main.js"), "utf8");
+        const countries = [...source.match(/supportedFlagCountries = new Set\(\[(.*?)\]/)[1].matchAll(/'([A-Z]{2})'/g)];
+        assert.ok(countries.length > 200);
+        for (const [, country] of countries) {
+            const flag = fs.readFileSync(path.join(installDirectory, "img", "flags", "48", country + ".png"));
+            assert.equal(flag.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", country);
+        }
     } finally {
         fs.rmSync(temporaryRoot, { recursive: true, force: true });
     }

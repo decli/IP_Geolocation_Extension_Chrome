@@ -14,10 +14,8 @@ let intervalId = null;
 let runtimeStatePromise = null;
 let lastRefreshStartedAt = 0;
 
-function ignoreRefreshFailure() {
-    // A refresh that fails has already put ERR on the badge. Swallowing the
-    // rejection here keeps fire-and-forget triggers from raising unhandled
-    // rejections inside the service worker.
+function reportBackgroundFailure(error) {
+    console.error('[IP Geolocation] Background operation failed:', error);
 }
 
 function addEventListenerIfAvailable(event, listener) {
@@ -62,15 +60,39 @@ async function renderBadge(badgeText, title) {
         ? `img/flags/48/${normalizedCode}.png`
         : 'img/icon48.png';
 
-    await Promise.all([
+    // Wait for every action write before reporting failure. Otherwise a late
+    // write from this render could overwrite the subsequent error indicator.
+    const results = await Promise.allSettled([
         chrome.action.setBadgeText({ text: showText ? normalizedCode : '' }),
         chrome.action.setBadgeBackgroundColor({ color: BADGE_COLOR }),
         chrome.action.setIcon({ path: iconPath }),
         chrome.action.setTitle({ title: title || 'IP Address & Geolocation' })
     ]);
 
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure) throw failure.reason;
+
     if (typeof chrome.action.setBadgeTextColor === 'function') {
         await chrome.action.setBadgeTextColor({ color: '#ffffff' });
+    }
+    return { showFlags, showText };
+}
+
+async function reportRefreshFailure(error) {
+    reportBackgroundFailure(error);
+    try {
+        // Discard a country that may only have been partially painted. A later
+        // successful refresh must be able to commit without fallback holding it.
+        const state = await getRuntimeState();
+        state.badge = emptyBadgeState();
+        await writeRuntimeState(state);
+    } catch (stateError) {
+        reportBackgroundFailure(stateError);
+    }
+    try {
+        await renderBadge(ERROR_BADGE_TEXT, 'The toolbar could not update. Open the extension to retry.');
+    } catch (renderError) {
+        reportBackgroundFailure(renderError);
     }
 }
 
@@ -99,13 +121,17 @@ async function recordLocationChange(state, geoLocation, ipv6) {
     const notificationsEnabled = await getSetting(KEY_SETTINGS_NOTIFICATION, true);
     const ipv6NotificationsEnabled = await getSetting(KEY_SETTINGS_NOTIFICATION_IPv6, false);
     if ((!ipv6 && notificationsEnabled) || (ipv6 && ipv6NotificationsEnabled)) {
-        await chrome.notifications.create(`geoLocationAlert${Math.random()}`, {
-            type: 'basic',
-            iconUrl: 'img/icon128.png',
-            title: 'IP Address & Geolocation',
-            message: `From ${previous.ipAddress} to ${current.ipAddress}.`,
-            contextMessage: `IPv${ipv6 ? 6 : 4} changed`
-        });
+        try {
+            await chrome.notifications.create(`geoLocationAlert${Math.random()}`, {
+                type: 'basic',
+                iconUrl: 'img/icon128.png',
+                title: 'IP Address & Geolocation',
+                message: `From ${previous.ipAddress} to ${current.ipAddress}.`,
+                contextMessage: `IPv${ipv6 ? 6 : 4} changed`
+            });
+        } catch (error) {
+            console.warn('[IP Geolocation] IP-change notification failed:', error);
+        }
     }
 }
 
@@ -129,25 +155,26 @@ async function performRefresh() {
     const ipv4 = fulfilledLocation(ipv4Result);
     const ipv6 = fulfilledLocation(ipv6Result);
 
-    await recordLocationChange(state, ipv4, false);
-    await recordLocationChange(state, ipv6, true);
-
     // Exactly one badge commit is allowed per completed refresh. This removes
     // the old shared ipv4Error race without changing the ERR semantics.
     const candidate = badgeCandidate(selectBadgeLocation(badgeIndicator, ipv4, ipv6));
     const decision = evaluateBadgeCommit(state.badge, candidate);
-    state.badge = decision.state;
-    await writeRuntimeState(state);
-
+    let display = null;
     if (decision.commit) {
-        await renderBadge(
+        display = await renderBadge(
             candidate ? candidate.countryCode : ERROR_BADGE_TEXT,
             candidate ? describeReading(candidate) : 'The IP address lookup failed'
         );
     }
+    // A selected country becomes committed only after the action APIs succeed.
+    state.badge = decision.state;
+
+    await recordLocationChange(state, ipv4, false);
+    await recordLocationChange(state, ipv6, true);
+    await writeRuntimeState(state);
 
     if (candidate) {
-        return { ok: true, family: candidate.family, source: candidate.source, committed: decision.commit };
+        return { ok: true, family: candidate.family, source: candidate.source, committed: decision.commit, display };
     }
 
     return {
@@ -161,7 +188,10 @@ function fetchGeoLocation() {
     if (refreshInFlight) return refreshInFlight;
 
     lastRefreshStartedAt = Date.now();
-    refreshInFlight = performRefresh().finally(() => {
+    refreshInFlight = performRefresh().catch(async (error) => {
+        await reportRefreshFailure(error);
+        throw error;
+    }).finally(() => {
         refreshInFlight = null;
     });
     return refreshInFlight;
@@ -181,7 +211,7 @@ async function requestRefresh(options = {}) {
 }
 
 function refreshInBackground(options) {
-    void requestRefresh(options).catch(ignoreRefreshFailure);
+    void requestRefresh(options).catch(reportBackgroundFailure);
 }
 
 function startInterval() {
@@ -223,7 +253,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     // The alarm is the only trigger left when the browser sits completely idle,
     // so it also repairs the schedule: a worker that was restarted for this
     // event has no interval yet, and a lost alarm would otherwise stay lost.
-    void ensureAlarm().catch(ignoreRefreshFailure);
+    void ensureAlarm().catch(reportBackgroundFailure);
     startInterval();
     refreshInBackground({ force: true });
 });
@@ -249,28 +279,30 @@ if (typeof self !== 'undefined' && typeof self.addEventListener === 'function') 
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-    void ensureAlarm().catch(ignoreRefreshFailure);
+    void ensureAlarm().catch(reportBackgroundFailure);
 });
 
 chrome.runtime.onStartup.addListener(() => {
-    void ensureAlarm().catch(ignoreRefreshFailure);
+    void ensureAlarm().catch(reportBackgroundFailure);
 });
 
 chrome.runtime.onSuspend.addListener(stopInterval);
 
 async function initialize() {
+    // A placeholder or alarm failure must never prevent future retry attempts.
+    startInterval();
+    await ensureAlarm().catch(reportBackgroundFailure);
     const state = await getRuntimeState();
 
     // Only paint the placeholder when nothing is known yet. The worker restarts
     // on every wake-up event, and resetting a known country code to '...' on
     // each of those restarts would make the toolbar flicker constantly.
     if (!state.badge || !state.badge.countryCode) {
-        await renderBadge(PENDING_BADGE_TEXT, 'Looking up your public IP address');
+        await renderBadge(PENDING_BADGE_TEXT, 'Looking up your public IP address')
+            .catch(reportBackgroundFailure);
     }
 
-    await ensureAlarm();
-    startInterval();
     await fetchGeoLocation();
 }
 
-void initialize().catch(() => void renderBadge(ERROR_BADGE_TEXT, 'The IP address lookup failed'));
+void initialize().catch(reportBackgroundFailure);
