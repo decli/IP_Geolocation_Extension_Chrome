@@ -19,7 +19,7 @@ The popup presents the current IPv4, IPv6, and geolocation details in one place,
 
 ![IP Address & Geolocation settings page: toggles for IPv4 and IPv6 change notifications, an Auto / IPv4 / IPv6 choice for which address family drives the country indicator, and toggles for showing the country flag and the country-code badge](docs/images/extension-options.jpg)
 
-The settings page holds five things and nothing else: the two change notifications, which address family drives the country indicator, and whether the toolbar shows a flag or a country-code badge.
+The settings page holds five things: two change notifications, the address family driving the country indicator, and two independent display switches. Flags replace the globe icon; country-code badges overlay text such as `US`. Both can be enabled together. Turning both off leaves only the globe.
 
 ## Features
 
@@ -66,7 +66,15 @@ If both keyed and keyless builds were previously loaded from the same `dev/` pat
 | IPv4 | Failure | Any | `ERR` |
 | IPv6 | Any | Failure | `ERR` |
 
-The extension never substitutes the “last successful country” for a failed lookup. `ERR` therefore always means that the current detection round could not obtain a valid result for the selected address family.
+The extension never substitutes the “last successful country” for a failed lookup. On lookup failure, `ERR` means that the current detection round could not obtain a valid result for the selected address family.
+
+A toolbar-update failure also attempts to display `ERR` and shows a retry message in the popup. The tooltip distinguishes a lookup failure from an update failure. When country-code badges are disabled, `ERR` is not forced on. Notification failures do not block flag updates, and an initial icon-rendering failure does not disable subsequent retries.
+
+### The popup shows a country, but the toolbar still shows a globe
+
+Choose `Auto` or an available address family in settings, enable **Show country flags** and **Show country badge**, then click **Save settings**. The popup explains when both display switches are off. Upgrading preserves existing display preferences.
+
+The popup table and background toolbar still query separately, so a successful table does not prove the toolbar has finished. The background waits for both address families before committing one update; slow or unavailable IPv6 can cause a short delay. Persistent background failures are shown in the popup with retry and settings controls. See [toolbar troubleshooting](docs/TROUBLESHOOTING.md) for diagnostic steps.
 
 ## Network services and privacy
 

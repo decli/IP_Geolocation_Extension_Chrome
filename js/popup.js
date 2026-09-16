@@ -9,18 +9,16 @@ function reloadPopup() {
 
 function handleError() {
     if (geoIpV4 == null && geoIpV6 == null && !ipv4IsFetching && !ipv6IsFetching) {
-        setTimeout(function () { // https://github.com/google/material-design-lite/issues/1995
-            // connection issue            
-            let snackbarContainer = document.querySelector('.mdl-js-snackbar');
-            let data = {
-                message: 'Network error occured.',
-                timeout: 20000,
-                actionHandler: reloadPopup,
-                actionText: 'Retry'
-            };
-            snackbarContainer.MaterialSnackbar.showSnackbar(data);
-        }, 1);
+        setStatus('lookupStatus', 'The IP address lookup failed. Check your connection and try again.');
     }
+}
+
+function setStatus(id, message) {
+    const element = document.getElementById(id);
+    element.textContent = message;
+    element.hidden = !message;
+    document.getElementById('popupStatus').hidden =
+        document.getElementById('lookupStatus').hidden && document.getElementById('toolbarStatus').hidden;
 }
 
 function fetchGeoLocation() {
@@ -28,7 +26,7 @@ function fetchGeoLocation() {
     geoLocate.fetch({
         success: function () {
             geoIpV4 = geoLocate;
-            //ipv4IsFetching = false;
+            ipv4IsFetching = false;
             triggerView();
         },
         error: function () {
@@ -42,7 +40,7 @@ function fetchGeoLocation() {
     geoLocate6.fetch({
         success: function () {
             geoIpV6 = geoLocate6;
-            //ipv6IsFetching = false;
+            ipv6IsFetching = false;
             triggerView();
         },
         error: function () {
@@ -103,13 +101,33 @@ function requestBackgroundRefresh() {
     // stopped for a while. Opening the popup is the clearest signal that the
     // user wants the current state, so the worker is woken up for a refresh
     // instead of leaving a stale country code next to a fresh popup.
-    if (!chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') return;
-    chrome.runtime.sendMessage({ method: 'refresh' }, function () {
-        void chrome.runtime.lastError;
-    });
+    const failureMessage = 'The toolbar could not update. Try again or check extension settings.';
+    if (!chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') {
+        setStatus('toolbarStatus', failureMessage);
+        return;
+    }
+    try {
+        chrome.runtime.sendMessage({ method: 'refresh' }, function (response) {
+            const transportError = chrome.runtime.lastError;
+            if (transportError || !response || response.error || !response.data) {
+                console.error('[IP Geolocation] Toolbar refresh failed:', transportError || response);
+                setStatus('toolbarStatus', failureMessage);
+            } else if (!response.data.ok) {
+                setStatus('toolbarStatus', 'The toolbar could not locate the selected IP version. Try Auto or IPv4 in settings.');
+            } else if (response.data.display && !response.data.display.showFlags && !response.data.display.showText) {
+                setStatus('toolbarStatus', 'Country flags and country badges are both turned off. Enable them in settings to show your country.');
+            } else {
+                setStatus('toolbarStatus', '');
+            }
+        });
+    } catch (error) {
+        console.error('[IP Geolocation] Toolbar refresh failed:', error);
+        setStatus('toolbarStatus', failureMessage);
+    }
 }
 
 window.addEventListener("load", function () {
+    document.getElementById('retryLookup').addEventListener('click', reloadPopup);
     fetchGeoLocation();
     requestBackgroundRefresh();
 });

@@ -58,13 +58,13 @@ function createEvent(listeners) {
 // A worker restart is modelled by loading the scripts again against the same
 // browser-side storage, which is exactly what survives a Manifest V3 shutdown.
 function createChromeMock(profile) {
-    const badge = { text: '', color: '', icon: '', title: '' };
+    const badge = profile.toolbar || (profile.toolbar = { text: '', color: '', icon: '', title: '' });
     const notifications = [];
     const alarms = {};
     const listeners = { alarm: [], tabActivated: [], tabUpdated: [], windowFocus: [], online: [] };
 
     return {
-        state: { badge, notifications, listeners, alarms, profile },
+        state: { badge, notifications, listeners, alarms, profile, errors: [], warnings: [], iconWrites: [] },
         action: {
             setBadgeText: async ({ text }) => { badge.text = text; },
             setBadgeBackgroundColor: async ({ color }) => { badge.color = color; },
@@ -106,8 +106,14 @@ function createProfile() {
     return { local: {}, session: {} };
 }
 
-function loadBackground(fetchMock, profile = createProfile()) {
+function loadBackground(fetchMock, profile = createProfile(), configure = () => { }) {
     const chrome = createChromeMock(profile);
+    const setIcon = chrome.action.setIcon;
+    chrome.action.setIcon = async (details) => {
+        chrome.state.iconWrites.push(details.path);
+        await setIcon(details);
+    };
+    configure(chrome);
     let clockOffset = 0;
     class MockDate extends Date {
         static now() {
@@ -119,6 +125,10 @@ function loadBackground(fetchMock, profile = createProfile()) {
         Date: MockDate,
         Intl: Intl,
         chrome: chrome,
+        console: {
+            error: (...args) => chrome.state.errors.push(args.map(String).join(' ')),
+            warn: (...args) => chrome.state.warnings.push(args.map(String).join(' '))
+        },
         clearInterval: () => { },
         clearTimeout: clearTimeout,
         fetch: fetchMock,
@@ -153,6 +163,91 @@ function geoResponse(country) {
         location: { latitude: 37.5, longitude: -122.2, time_zone: 'America/Los_Angeles' }
     });
 }
+
+function successfulIPv4(country = 'US', ip = '203.0.113.10') {
+    return async (url) => {
+        if (url.includes('api.ipify')) return jsonResponse({ ip });
+        if (url.includes('api.country.is')) return geoResponse(country);
+        throw new Error('IPv6 unavailable');
+    };
+}
+
+test('display preferences independently control the flag and country text', async () => {
+    for (const [flags, text] of [[true, true], [true, false], [false, true], [false, false]]) {
+        const profile = createProfile();
+        profile.local = { badge_show_flags: JSON.stringify(flags), badge_show_text: JSON.stringify(text) };
+        const { api, chrome } = loadBackground(successfulIPv4(), profile);
+        await delay(20);
+        const result = await api.fetchGeoLocation();
+        assert.equal(result.ok, true);
+        assert.equal(result.display.showFlags, flags);
+        assert.equal(result.display.showText, text);
+        assert.equal(chrome.state.badge.text, text ? 'US' : '');
+        assert.equal(chrome.state.badge.icon, flags ? 'img/flags/48/US.png' : 'img/icon48.png');
+    }
+});
+
+test('a rejected notification cannot prevent the new country from being displayed', async () => {
+    let country = 'US';
+    let ip = '203.0.113.10';
+    const { api, chrome } = loadBackground((url) => successfulIPv4(country, ip)(url));
+    await delay(20);
+    chrome.notifications.create = async () => { throw new Error('Notifications denied'); };
+    country = 'DE';
+    ip = '198.51.100.20';
+    const result = await api.fetchGeoLocation();
+    assert.equal(result.ok, true);
+    assert.equal(chrome.state.badge.text, 'DE');
+    assert.match(chrome.state.badge.icon, /DE\.png$/);
+    assert.ok(chrome.state.warnings.some((message) => message.includes('Notifications denied')));
+});
+
+test('failed action writes settle before ERR and do not commit a country that was not painted', async () => {
+    let country = 'US';
+    const { api, chrome, profile } = loadBackground((url) => successfulIPv4(country)(url));
+    await delay(20);
+    const originalIcon = chrome.action.setIcon;
+    const originalText = chrome.action.setBadgeText;
+    chrome.action.setIcon = async (details) => {
+        if (details.path.endsWith('/DE.png')) throw new Error('Cannot load flag');
+        return originalIcon(details);
+    };
+    chrome.action.setBadgeText = async (details) => {
+        if (details.text === 'DE') await delay(30);
+        return originalText(details);
+    };
+    country = 'DE';
+    await assert.rejects(api.fetchGeoLocation(), /Cannot load flag/);
+    assert.equal(chrome.state.badge.text, 'ERR');
+    assert.equal(profile.session.runtime_state.badge.countryCode, '');
+    assert.ok(chrome.state.errors.some((message) => message.includes('Cannot load flag')));
+    chrome.action.setIcon = originalIcon;
+    const result = await api.fetchGeoLocation();
+    assert.equal(result.ok, true);
+    assert.equal(chrome.state.badge.text, 'DE');
+    assert.equal(profile.session.runtime_state.badge.countryCode, 'DE');
+});
+
+test('startup painting and alarm failures keep retries alive and recovery repaints the flag', async () => {
+    let fail = true;
+    const { chrome } = loadBackground(successfulIPv4(), createProfile(), (browser) => {
+        const originalIcon = browser.action.setIcon;
+        browser.action.setIcon = async (details) => {
+            if (fail) throw new Error('Icon unavailable');
+            return originalIcon(details);
+        };
+        browser.alarms.get = async () => { throw new Error('Alarm unavailable'); };
+    });
+    await delay(30);
+    assert.equal(typeof chrome.state.intervalCallback, 'function');
+    assert.ok(chrome.state.errors.some((message) => message.includes('Icon unavailable')));
+    assert.ok(chrome.state.errors.some((message) => message.includes('Alarm unavailable')));
+    fail = false;
+    chrome.state.listeners.online[0]();
+    await delay(30);
+    assert.equal(chrome.state.badge.text, 'US');
+    assert.match(chrome.state.badge.icon, /US\.png$/);
+});
 
 test('one refresh commits once and a later outage immediately commits ERR', async () => {
     let mode = 'success';
@@ -282,7 +377,8 @@ test('a restarted worker keeps the country code it already committed', async () 
 
     const restarted = loadBackground(neverResolves, started.profile);
     await delay(40);
-    assert.equal(restarted.chrome.state.badge.text, '');
+    assert.equal(restarted.chrome.state.badge.text, 'US');
+    assert.equal(restarted.chrome.state.iconWrites.length, 0);
 
     const installed = loadBackground(neverResolves);
     await delay(40);

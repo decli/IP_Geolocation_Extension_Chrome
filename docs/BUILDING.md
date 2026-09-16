@@ -67,7 +67,7 @@ Never commit `extension.pem`. Reusing the same private key preserves the identit
 
 ## GitHub Release workflow
 
-`.github/workflows/release.yml` runs for tags matching `v*` and:
+`.github/workflows/release.yml` runs for tags matching `v*`, an explicit manual rebuild, or a `manifest.json` change merged into `main`, and:
 
 1. runs all tests and syntax checks;
 2. builds the ZIP;
@@ -75,6 +75,8 @@ Never commit `extension.pem`. Reusing the same private key preserves the identit
 4. packs a signed CRX with Chrome;
 5. generates SHA-256 checksums;
 6. creates or updates the GitHub Release and uploads all assets.
+
+For a version change on `main`, the workflow derives `v<version>` from the manifest and creates the release tag at the exact commit that was built. If that version already has a Release, its assets are left unchanged; bump both manifest and package versions to publish another version. Explicit tag/manual rebuilds retain the existing upload behavior. A requested tag must match the manifest version. The test and syntax gates run before anything is published.
 
 The repository secret contains base64-encoded PEM data. To configure another repository:
 
